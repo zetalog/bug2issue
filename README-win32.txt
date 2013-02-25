@@ -6,7 +6,8 @@
 2. Install mysql-query-browser, the tested version is 1.1.20
    2.1 lauch mysql-query-browser-1.1.20-win.msi
 3. Restore mysql database
-   3.1 lauch mysql in the cmd.exe (you should already have it in the PATH environment in the step 1.3)
+   3.1 lauch mysql in the cmd.exe (you should already have it in the PATH
+       environment in the step 1.3)
        mysql -u root --password=<mysql root password>
    3.2 restore mysql database using backup sql file
        mysql> create database acpica;
@@ -14,7 +15,11 @@
        mysql> source <backup sql file>;
 4. Dump bugzilla entries
    4.1 compile bug2issue
+       MSVC project files need to be converted before compiling win32 version:
+       ./scripts/msvcenable.sh .
+       The reversal can be done before generating patches:
+       ./scripts/msvcenable.sh -r .
    4.2 dump issues:
-       bug2issue -d acpica -w <mysql root password> <path to store issue files>
+       bug2issue -d acpica -w <mysql root password> <path to store files>
    4.3 dump comments:
-       bug2issue -d acpica -w <mysql root password> -c <path to store issue files>
+       bug2issue -d acpica -w <mysql root password> -c <path to store files>
