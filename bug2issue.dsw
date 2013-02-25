@@ -3,7 +3,7 @@ Microsoft Developer Studio Workspace File, Format Version 6.00
 
 ###############################################################################
 
-Project: "bug2issue"=".\src\bug2issue\bug2issue.dsp" - Package Owner=<4>
+Project: "bug2issue"=.\src\bug2issue\bug2issue.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
@@ -17,23 +17,14 @@ Package=<4>
     Begin Project Dependency
     Project_Dep_Name json
     End Project Dependency
+    Begin Project Dependency
+    Project_Dep_Name curl
+    End Project Dependency
 }}}
 
 ###############################################################################
 
-Project: "json"=".\lib\json\json.dsp" - Package Owner=<4>
-
-Package=<5>
-{{{
-}}}
-
-Package=<4>
-{{{
-}}}
-
-###############################################################################
-
-Project: "mysql"=".\lib\mysql\lib\mysql.dsp" - Package Owner=<4>
+Project: "curl"=.\lib\curl\curl.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
@@ -48,7 +39,34 @@ Package=<4>
 
 ###############################################################################
 
-Project: "zlib"=".\lib\zlib\zlib.dsp" - Package Owner=<4>
+Project: "json"=.\lib\json\json.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "mysql"=.\lib\mysql\lib\mysql.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+    Begin Project Dependency
+    Project_Dep_Name zlib
+    End Project Dependency
+}}}
+
+###############################################################################
+
+Project: "zlib"=.\lib\zlib\zlib.dsp - Package Owner=<4>
 
 Package=<5>
 {{{
