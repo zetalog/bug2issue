@@ -24,6 +24,18 @@ Package=<4>
 
 ###############################################################################
 
+Project: "crypto"=.\lib\crypto\crypto.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "curl"=.\lib\curl\curl.dsp - Package Owner=<4>
 
 Package=<5>
