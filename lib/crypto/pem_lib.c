@@ -150,6 +150,25 @@ void PEM_dek_info(char *buf, const char *type, int len, char *str)
 	buf[j+i*2+1]='\0';
 	}
 
+#ifdef CONFIG_CRYPTO_FP
+void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp, void **x,
+		    pem_password_cb *cb, void *u)
+	{
+        BIO *b;
+        void *ret;
+
+        if ((b=BIO_new(BIO_s_file())) == NULL)
+		{
+		PEMerr(PEM_F_PEM_ASN1_READ,ERR_R_BUF_LIB);
+                return(0);
+		}
+        BIO_set_fp(b,fp,BIO_NOCLOSE);
+        ret=PEM_ASN1_read_bio(d2i,name,b,x,cb,u);
+        BIO_free(b);
+        return(ret);
+	}
+#endif
+
 static int check_pem(const char *nm, const char *name)
 {
 	/* Normal matching nm and name */
@@ -232,6 +251,26 @@ err:
 	if (!ret) OPENSSL_free(data);
 	return ret;
 	}
+
+#ifdef CONFIG_CRYPTO_FP
+int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp,
+		   char *x, const EVP_CIPHER *enc, unsigned char *kstr,
+		   int klen, pem_password_cb *callback, void *u)
+        {
+        BIO *b;
+        int ret;
+
+        if ((b=BIO_new(BIO_s_file())) == NULL)
+		{
+		PEMerr(PEM_F_PEM_ASN1_WRITE,ERR_R_BUF_LIB);
+                return(0);
+		}
+        BIO_set_fp(b,fp,BIO_NOCLOSE);
+        ret=PEM_ASN1_write_bio(i2d,name,b,x,enc,kstr,klen,callback,u);
+        BIO_free(b);
+        return(ret);
+        }
+#endif
 
 int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name, BIO *bp,
 		       char *x, const EVP_CIPHER *enc, unsigned char *kstr,

@@ -122,6 +122,10 @@
 
 #include <openssl/e_os2.h>
 
+#ifdef CONFIG_CRYPTO_FP
+#include <stdio.h>
+#endif
+
 #include <openssl/stack.h>
 #include <openssl/safestack.h>
 #include <openssl/opensslv.h>

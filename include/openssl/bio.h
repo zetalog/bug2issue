@@ -60,6 +60,10 @@
 #define HEADER_BIO_H
 
 #include <openssl/e_os2.h>
+
+#ifdef CONFIG_CRYPTO_FP
+# include <stdio.h>
+#endif
 #include <stdarg.h>
 
 #include <openssl/crypto.h>
