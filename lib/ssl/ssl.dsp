@@ -259,7 +259,175 @@ SOURCE=.\t1_srvr.c
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
 # Begin Source File
 
+SOURCE=..\..\include\openssl\asn1.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\asn1_mac.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\portable\autoconf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\bio.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\bn.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\comp.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\conf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\crypto.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\dh.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\dsa.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\dtls1.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\e_os.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\e_os2.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\err.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\evp.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\hmac.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\lhash.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\md5.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\o_dir.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\obj_mac.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\objects.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\opensslconf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\opensslv.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ossl_typ.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pem.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pem2.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pkcs7.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pq_compat.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pqueue.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\rand.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\rsa.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\safestack.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\sha.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ssl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ssl2.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ssl23.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ssl3.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\ssl_locl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\stack.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\tls1.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\x509.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\x509_vfy.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\x509v3.h
 # End Source File
 # End Group
 # End Target

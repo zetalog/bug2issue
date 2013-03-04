@@ -1707,7 +1707,27 @@ SOURCE=.\xcbc_enc.c
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
 # Begin Source File
 
+SOURCE=..\..\include\openssl\aes.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\aes_locl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\asn1.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\asn1_mac.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\asn1t.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\portable\autoconf.h
 # End Source File
 # Begin Source File
 
@@ -1719,7 +1739,19 @@ SOURCE=.\bf_pi.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\bio.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\bio_lcl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\blowfish.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\bn.h
 # End Source File
 # Begin Source File
 
@@ -1728,6 +1760,10 @@ SOURCE=.\bn_lcl.h
 # Begin Source File
 
 SOURCE=.\bn_prime.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\cast.h
 # End Source File
 # Begin Source File
 
@@ -1743,6 +1779,18 @@ SOURCE=.\charmap.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\comp.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\conf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\conf_api.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\conf_def.h
 # End Source File
 # Begin Source File
@@ -1751,7 +1799,19 @@ SOURCE=.\cryptlib.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\crypto.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\des.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\des_locl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\des_old.h
 # End Source File
 # Begin Source File
 
@@ -1759,7 +1819,35 @@ SOURCE=.\des_ver.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\dh.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\dsa.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\dso.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\e_os.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\e_os.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\e_os2.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\err.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\evp.h
 # End Source File
 # Begin Source File
 
@@ -1771,7 +1859,19 @@ SOURCE=.\ext_dat.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\hmac.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\idea.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\idea_lcl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\lhash.h
 # End Source File
 # Begin Source File
 
@@ -1779,11 +1879,23 @@ SOURCE=.\md32_common.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\md4.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\md4_locl.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\md5.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\md5_locl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\o_dir.h
 # End Source File
 # Begin Source File
 
@@ -1799,7 +1911,31 @@ SOURCE=.\obj_dat.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\obj_mac.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\objects.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ocsp.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\include\openssl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\opensslconf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\opensslv.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ossl_typ.h
 # End Source File
 # Begin Source File
 
@@ -1811,7 +1947,27 @@ SOURCE=..\..\include\openssl\pem.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\pem2.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pkcs12.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pkcs7.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\pq_compat.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\pqueue.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\rand.h
 # End Source File
 # Begin Source File
 
@@ -1819,7 +1975,15 @@ SOURCE=.\rand_lcl.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\rc2.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\rc2_locl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\rc4.h
 # End Source File
 # Begin Source File
 
@@ -1827,7 +1991,15 @@ SOURCE=.\rc4_locl.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\rc5.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\rc5_locl.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ripemd.h
 # End Source File
 # Begin Source File
 
@@ -1843,6 +2015,18 @@ SOURCE=.\rpc_des.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\rsa.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\safestack.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\sha.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\sha_locl.h
 # End Source File
 # Begin Source File
@@ -1851,16 +2035,36 @@ SOURCE=.\spr.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\include\openssl\stack.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ui.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\ui_compat.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\ui_locl.h
 # End Source File
+# Begin Source File
+
+SOURCE=.\ms\uplink.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\x509.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\x509_vfy.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\openssl\x509v3.h
+# End Source File
 # End Group
-# Begin Source File
-
-SOURCE=.\Kbuild
-# End Source File
-# Begin Source File
-
-SOURCE=.\Kconfig
-# End Source File
 # End Target
 # End Project
