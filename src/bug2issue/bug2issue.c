@@ -33,8 +33,8 @@ struct bug2issue_cfg {
     unsigned long mode;
 #define BUG2ISSUE_EXPORT_ISSUE      0x01
 #define BUG2ISSUE_EXPORT_COMMENT    0x02
-#define BUG2ISSUE_UPLOAD_GITHUB     0x04
-#define BUG2ISSUE_LIST_BUGID        0x08
+#define BUG2ISSUE_UPLOAD_GITHUB     0x10
+#define BUG2ISSUE_LIST_BUGID        0x80
 
     char *sql_server;
     char *sql_port;
@@ -412,7 +412,8 @@ static size_t bug2issue_curl_write_cb(void *buffer,
     return rc;
 }
 
-static int bug2issue_curl_post(const char *url, const char *postfields)
+static int bug2issue_curl_request(const char *url, const char *requestinfo,
+                                  const char *postfields)
 {
     int ret;
     curl_off_t postfieldsize = strlen(postfields);
@@ -429,11 +430,10 @@ static int bug2issue_curl_post(const char *url, const char *postfields)
 
     curl_easy_setopt(bug2issue.curl, CURLOPT_USERPWD, bug2issue.github_user);
 
-    curl_easy_setopt(bug2issue.curl, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_easy_setopt(bug2issue.curl, CURLOPT_CUSTOMREQUEST, requestinfo);
     curl_easy_setopt(bug2issue.curl, CURLOPT_POSTFIELDS, postfields);
     curl_easy_setopt(bug2issue.curl, CURLOPT_POSTFIELDSIZE_LARGE, postfieldsize);
 
-    curl_easy_setopt(bug2issue.curl, CURLOPT_USERAGENT, CURL_USERAGENT);
     curl_easy_setopt(bug2issue.curl, CURLOPT_HTTPHEADER, NULL);
 
     ret = curl_easy_perform(bug2issue.curl);
@@ -444,6 +444,32 @@ static int bug2issue_curl_post(const char *url, const char *postfields)
 
     (void)fwrite(bug2issue.curl_output_buf, bug2issue.curl_store_size, 1, stdout);
     return 0;
+}
+
+static int bug2issue_curl_post(const char *url, const char *postfields)
+{
+    return bug2issue_curl_request(url, "POST", postfields);
+}
+
+static int bug2issue_curl_patch(const char *url, const char *postfields)
+{
+    return bug2issue_curl_request(url, "PATCH", postfields);
+}
+
+static char *bug2issue_get_issue_url(const char *url_template, const char *issue_id)
+{
+        char *url;
+        int url_size;
+
+        url_size = strlen(url_template) + strlen(bug2issue.github_issue_url) + strlen(issue_id);
+        url = malloc(url_size);
+        if (!url) {
+            fprintf(stderr, "bugzilla: malloc(issue_url) failure.\n");
+            return NULL;
+        }
+        sprintf(url, url_template, bug2issue.github_issue_url, issue_id);
+
+        return url;
 }
 
 static int bug2issue_export_issue_comments(const char *bug_id, const char *issue_id)
@@ -506,21 +532,15 @@ static int bug2issue_export_issue_comments(const char *bug_id, const char *issue
         printbuf_free(pbuf);
 
         if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
-            char url_template[] = "https://api.github.com/repos/%s/issues/%s/comments";
-            char *comment_url;
-            int url_size;
+            char *url;
 
-            url_size = strlen(url_template) + strlen(bug2issue.github_repo) + strlen(issue_id);
-            comment_url = malloc(url_size);
-            if (!comment_url) {
+            url = bug2issue_get_issue_url("%s/%s/comments", issue_id);
+            if (!url) {
                 ret = -ENOMEM;
-                fprintf(stderr, "bugzilla: malloc(comment_url) failure.\n");
                 goto end;
             }
-            sprintf(comment_url, url_template, bug2issue.github_repo, issue_id);
-            ret = bug2issue_curl_post(comment_url,
-                                      json_object_to_json_string(object));
-            free(comment_url);
+            ret = bug2issue_curl_post(url, json_object_to_json_string(object));
+            free(url);
         } else {
             sprintf(filename, "%s\\comment-%s-%s.json", bug2issue.issues_dir, row[0], row[1]);
             json_object_to_file(filename, object);
@@ -540,7 +560,7 @@ end:
     return ret;
 }
 
-static int bug2issue_export_issue_content(const char *bug_id, char **issue_id)
+static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, int *closed)
 {
     int ret = 0;
     int rows;
@@ -615,10 +635,13 @@ static int bug2issue_export_issue_content(const char *bug_id, char **issue_id)
 
         printbuf_free(pbuf);
 
-        if (bug2issue_is_closed_bug(row[BUG_STATUS_INDEX]))
-           json_object_object_add(object, "state", json_object_new_string("close"));
-        else
-           json_object_object_add(object, "state", json_object_new_string("open"));
+        if (bug2issue_is_closed_bug(row[BUG_STATUS_INDEX])) {
+            *closed = 1;
+            json_object_object_add(object, "state", json_object_new_string("closed"));
+        } else {
+            *closed = 0;
+            json_object_object_add(object, "state", json_object_new_string("open"));
+        }
 
         if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
             ret = bug2issue_curl_post(bug2issue.github_issue_url,
@@ -661,17 +684,58 @@ end:
     return ret;
 }
 
+int bug2issue_close_issue(const char *issue_id)
+{
+    int ret = 0;
+    char *url = NULL;
+    json_object *object = NULL;
+
+    url = bug2issue_get_issue_url("%s/%s", issue_id);
+    if (!url) {
+        ret = -ENOMEM;
+        goto end;
+    }
+
+    object = json_object_new_object();
+    if (!object) {
+        ret = -ENOMEM;
+        fprintf(stderr, "json: json_object_new_object failure.\n");
+        goto end;
+    }
+
+    json_object_object_add(object, "state", json_object_new_string("closed"));
+    if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
+        ret = bug2issue_curl_patch(url, json_object_to_json_string(object));
+        if (ret)
+            goto end;
+    }
+
+end:
+    if (url)
+        free(url);
+    if (object)
+        json_object_put(object);
+    return ret;
+}
+
 static int bug2issue_export_issue(const char *bug_id)
 {
     int ret = 0;
     char *issue_id = NULL;
 
     if (bug2issue.mode & BUG2ISSUE_EXPORT_ISSUE) {
-        ret = bug2issue_export_issue_content(bug_id, &issue_id);
+        int closed;
+
+        ret = bug2issue_export_issue_content(bug_id, &issue_id, &closed);
         if (ret) goto end;
 
         if (bug2issue.mode & BUG2ISSUE_EXPORT_COMMENT) {
             ret = bug2issue_export_issue_comments(bug_id, issue_id);
+            if (ret) goto end;
+        }
+
+        if (closed) {
+            ret = bug2issue_close_issue(issue_id);
             if (ret) goto end;
         }
     }
@@ -791,7 +855,7 @@ static int bug2issue_init(void)
     memset(&bug2issue, 0, sizeof(struct bug2issue_cfg));
 
     /* default mode */
-    bug2issue.mode = BUG2ISSUE_UPLOAD_GITHUB;
+    bug2issue.mode = (BUG2ISSUE_UPLOAD_GITHUB | BUG2ISSUE_EXPORT_ISSUE);
 
     bug2issue.sql_server = "localhost";
     bug2issue.sql_port = "3306";
@@ -856,6 +920,8 @@ static int bug2issue_start(void)
             return -ENOMEM;
         }
         sprintf(bug2issue.github_issue_url, url_template, bug2issue.github_repo);
+
+        curl_easy_setopt(bug2issue.curl, CURLOPT_USERAGENT, CURL_USERAGENT);
     }
 
     ret = bug2issue_mysql_init();
@@ -883,8 +949,8 @@ static void bug2issue_stop(void)
 static struct option long_options[] = {
     { "bug", 1, 0, 'b' },
     { "list-bugids", 0, 0, 'l' },
-    { "export-comments", 0, 0, 'c' },
     { "export-folder", 1, 0, 'f' },
+    { "comments", 0, 0, 'c' },
     { "bugzilla-host", 1, 0, 'h' },
     { "bugzilla-user", 1, 0, 'u' },
     { "bugzilla-db", 1, 0, 'd' },
@@ -898,7 +964,8 @@ static void usage(void)
 {
     fprintf(stdout, "Usage bug2issue\n");
     fprintf(stdout, "  [-l|--list-bugids]\n");
-    fprintf(stdout, "  [-c|--export-comments]\n");
+    fprintf(stdout, "  [-f|--export-folder]\n");
+    fprintf(stdout, "  [-c|--comments]\n");
     fprintf(stdout, "  [-b|--bug bug_id] dir\n");
     fprintf(stdout, "  [-d|--bugzilla-db database]\n");
     fprintf(stdout, "  [-h|--bugzilla-host host[:port]]\n");
@@ -956,7 +1023,7 @@ int main(int argc, char **argv)
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "lcb:d:h:u:r:w:f:s:", long_options, &option_index);
+        c = getopt_long(argc, argv, "lf:cb:d:h:u:r:w:s:", long_options, &option_index);
         if (c == EOF)
             break;
 
@@ -964,18 +1031,15 @@ int main(int argc, char **argv)
         case 'l':
             bug2issue.mode |= BUG2ISSUE_LIST_BUGID;
             break;
+        case 'f':
+            bug2issue.mode &= ~BUG2ISSUE_UPLOAD_GITHUB;
+            bug2issue.issues_dir = optarg;
+            break;
         case 'c':
             bug2issue.mode |= (BUG2ISSUE_EXPORT_ISSUE | BUG2ISSUE_EXPORT_COMMENT);
             break;
         case 'b':
             bug2issue.bug_id = optarg;
-            break;
-        case 's':
-            bug2issue_add_close_status(optarg);
-            break;
-        case 'f':
-            bug2issue.mode &= ~BUG2ISSUE_UPLOAD_GITHUB;
-            bug2issue.issues_dir = optarg;
             break;
         case 'd':
             bug2issue.sql_db = optarg;
@@ -991,6 +1055,9 @@ int main(int argc, char **argv)
             break;
         case 'w':
             bug2issue.github_user = optarg;
+            break;
+        case 's':
+            bug2issue_add_close_status(optarg);
             break;
         default:
             usage();
