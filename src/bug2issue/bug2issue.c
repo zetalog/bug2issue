@@ -72,11 +72,12 @@ struct bug2issue_cfg {
     char *issues_dir;
     char *bug_id;
     json_object *bugs;
+    json_object *comments;
 };
 
 struct bug2issue_cfg bug2issue;
 
-static const char *bugzilla_list_query = "select "
+static const char *bugzilla_issues_query = "select "
     "bugs.bug_id "
     "from bugs "
     "order by bugs.bug_id;";
@@ -148,6 +149,13 @@ static const char *bugzilla_issue_columns[] = {
     "bug_status",
 };
 
+static const char *bugzilla_comments_query = "select "
+    "longdescs.comment_id,"
+    "longdescs.bug_when "
+    "from longdescs "
+    "where longdescs.bug_id=%s "
+    "order by longdescs.comment_id, longdescs.bug_when;";
+
 #define CMT_EMAIL_INDEX     2
 #define CMT_CNAME_INDEX     3
 #define CMT_CREATE_INDEX    4
@@ -177,8 +185,7 @@ static const char *bugzilla_comment_query = "select "
         "submitter.userid=attachments.submitter_id "
     "left join attach_data on "
         "attach_data.id=attachments.attach_id "
-    "where longdescs.bug_id=%s "
-    "order by longdescs.bug_id, longdescs.comment_id, longdescs.bug_when;";
+    "where longdescs.comment_id=%s;";
 static const char *bugzilla_comment_columns[] = {
     "bug_id",
     "comment_id",
@@ -529,8 +536,10 @@ static int bug2issue_curl_request(const char *url, const char *requestinfo,
     int ret;
     curl_off_t postfieldsize;
     
-    if (postfields)
+    if (postfields) {
         postfieldsize = strlen(postfields);
+        (void)fwrite(postfields, (size_t)postfieldsize, 1, stdout);
+    }
 
     curl_easy_setopt(bug2issue.curl, CURLOPT_URL, url);
 
@@ -611,7 +620,7 @@ static char *bug2issue_get_repo_url(const char *sub)
     return url;
 }
 
-static int bug2issue_export_issue_comments(const char *bug_id, const char *issue_id)
+static int bug2issue_export_comment(const char *comment_id, const char *issue_id)
 {
     int ret = 0;
     int rows;
@@ -625,14 +634,14 @@ static int bug2issue_export_issue_comments(const char *bug_id, const char *issue
     char filename[MAX_PATH];
     struct printbuf *pbuf;
 
-    alloc_size = strlen(bugzilla_comment_query) + strlen(bug_id);
+    alloc_size = strlen(bugzilla_comment_query) + strlen(comment_id);
     alloc_string = malloc(alloc_size);
     if (!alloc_string) {
         ret = -ENOMEM;
         fprintf(stderr, "bugzilla: malloc(comment_query) failure.\n");
         goto end;
     }
-    sprintf(alloc_string, bugzilla_comment_query, bug_id);
+    sprintf(alloc_string, bugzilla_comment_query, comment_id);
     sql_string = alloc_string;
     column = bugzilla_comment_columns;
     count = sizeof(bugzilla_comment_columns)/sizeof(const char *);
@@ -699,7 +708,95 @@ end:
     return ret;
 }
 
-static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, int *closed)
+static int bug2issue_list_comments(const char *bug_id)
+{
+    int ret = 0;
+    int rows;
+    int index;
+    sql_row_t row;
+    json_object *object = NULL;
+    const char *sql_string;
+    char *alloc_string = NULL;
+    int alloc_size;
+    int count;
+
+    assert(!bug2issue.comments);
+
+    alloc_size = strlen(bugzilla_comments_query) + strlen(bug_id);
+    alloc_string = malloc(alloc_size);
+    if (!alloc_string) {
+        ret = -ENOMEM;
+        fprintf(stderr, "bugzilla: malloc(comments_query) failure.\n");
+        goto end;
+    }
+    sprintf(alloc_string, bugzilla_comments_query, bug_id);
+    sql_string = alloc_string;
+
+    count = 1;
+
+    object = json_object_new_array();
+    if (!object) {
+        ret = -ENOMEM;
+        fprintf(stderr, "json: json_object_new_object failure.\n");
+        goto end;
+    }
+
+    ret = bug2issue_mysql_select(sql_string);
+    if (ret) goto end;
+
+    while (bug2issue_mysql_fetch() == 0) {
+        row = bug2issue.row;
+        if (!row) break;
+
+        for (index = 0; index < count; index++) {
+            if (row[0])
+                json_object_array_add(object, json_object_new_string(row[0]));
+        }
+        rows++;
+	}
+
+    bug2issue.comments = object;
+    object = NULL;
+
+end:
+	bug2issue_mysql_free_result();
+    if (object)
+        json_object_put(object);
+    if (alloc_string)
+        free(alloc_string);
+    return ret;
+}
+
+static void bug2issue_export_comments(const char *bug_id, const char *issue_id)
+{
+    int ret;
+    const char *comment_id;
+    int nr_comments, idx;
+
+    do {
+        ret = bug2issue_list_comments(bug_id);
+    } while (ret);
+
+    assert(bug2issue.comments);
+
+    nr_comments = json_object_array_length(bug2issue.comments);
+    for (idx = 0; idx < nr_comments; idx++) {
+        comment_id = json_object_get_string(json_object_array_get_idx(bug2issue.comments, idx));
+        do {
+            ret = bug2issue_export_comment(comment_id, issue_id);
+        } while (ret);
+    }
+
+    json_object_put(bug2issue.comments);
+    bug2issue.comments = NULL;
+}
+
+static int bug2issue_is_valid_label(const char *label)
+{
+    return label && strlen(label);
+}
+
+static int bug2issue_create_issue(const char *bug_id, char **issue_id, int *closed)
 {
     int ret = 0;
     int rows;
@@ -798,21 +895,29 @@ static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, i
         }
 
         if (bug2issue.mode & BUG2ISSUE_LABEL_FIELD) {
-            if (bug2issue_is_labeled_field("rep_platform"))
+            if (bug2issue_is_labeled_field("rep_platform") &&
+                bug2issue_is_valid_label(row[BUG_PLATFORM_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_PLATFORM_INDEX]));
-            if (bug2issue_is_labeled_field("op_sys"))
+            if (bug2issue_is_labeled_field("op_sys") &&
+                bug2issue_is_valid_label(row[BUG_OS_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_OS_INDEX]));
-            if (bug2issue_is_labeled_field("priority"))
+            if (bug2issue_is_labeled_field("priority") &&
+                bug2issue_is_valid_label(row[BUG_PRIORITY_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_PRIORITY_INDEX]));
-            if (bug2issue_is_labeled_field("bug_severity"))
+            if (bug2issue_is_labeled_field("bug_severity") &&
+                bug2issue_is_valid_label(row[BUG_SEVERITY_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_SEVERITY_INDEX]));
-            if (bug2issue_is_labeled_field("bug_status"))
+            if (bug2issue_is_labeled_field("bug_status") &&
+                bug2issue_is_valid_label(row[BUG_STATUS_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_STATUS_INDEX]));
-            if (bug2issue_is_labeled_field("resolution"))
+            if (bug2issue_is_labeled_field("resolution") &&
+                bug2issue_is_valid_label(row[BUG_RESOLUTION_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_RESOLUTION_INDEX]));
         }
-        if (bug2issue.mode & BUG2ISSUE_LABEL_COMPONENT)
+        if (bug2issue.mode & BUG2ISSUE_LABEL_COMPONENT) {
+            if (bug2issue_is_valid_label(row[BUG_COMPONENT_INDEX]))
                json_object_array_add(labels, json_object_new_string(row[BUG_COMPONENT_INDEX]));
+        }
 
         if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
             ret = bug2issue_curl_post(bug2issue.github_issue_url,
@@ -889,7 +994,7 @@ end:
     return ret;
 }
 
-static int bug2issue_export_issue(const char *bug_id)
+static void bug2issue_export_issue(const char *bug_id)
 {
     int ret = 0;
     char *issue_id = NULL;
@@ -897,49 +1002,95 @@ static int bug2issue_export_issue(const char *bug_id)
     if (bug2issue.mode & BUG2ISSUE_EXPORT_ISSUE) {
         int closed;
 
-        ret = bug2issue_export_issue_content(bug_id, &issue_id, &closed);
-        if (ret) goto end;
+        do {
+            ret = bug2issue_create_issue(bug_id, &issue_id, &closed);
+        } while (ret);
 
-        if (bug2issue.mode & BUG2ISSUE_EXPORT_COMMENT) {
-            ret = bug2issue_export_issue_comments(bug_id, issue_id);
-            if (ret) goto end;
-        }
+        if (bug2issue.mode & BUG2ISSUE_EXPORT_COMMENT)
+            bug2issue_export_comments(bug_id, issue_id);
 
         if (closed) {
-            ret = bug2issue_close_issue(issue_id);
-            if (ret) goto end;
+            do {
+                ret = bug2issue_close_issue(issue_id);
+            } while (0);
         }
     }
 
-end:
     if (issue_id)
         free(issue_id);
+}
+
+static int bug2issue_list_issues(void)
+{
+    int ret = 0;
+    int rows;
+    int index;
+    sql_row_t row;
+    json_object *object = NULL;
+    const char *sql_string;
+    int count;
+
+    assert(!bug2issue.bugs);
+
+    sql_string = bugzilla_issues_query;
+    count = 1;
+
+    object = json_object_new_array();
+    if (!object) {
+        ret = -ENOMEM;
+        fprintf(stderr, "json: json_object_new_object failure.\n");
+        goto end;
+    }
+
+    ret = bug2issue_mysql_select(sql_string);
+    if (ret) goto end;
+
+    while (bug2issue_mysql_fetch() == 0) {
+        row = bug2issue.row;
+        if (!row) break;
+
+        for (index = 0; index < count; index++) {
+            if (row[0]) {
+                json_object_array_add(object, json_object_new_string(row[0]));
+                if (bug2issue.mode & BUG2ISSUE_LIST_BUGID)
+                    fprintf(stdout, "%s\n", row[0]);
+            }
+        }
+        rows++;
+	}
+
+    bug2issue.bugs = object;
+    object = NULL;
+
+end:
+	bug2issue_mysql_free_result();
+    if (object)
+        json_object_put(object);
     return ret;
 }
 
-static int bug2issue_export_issues(void)
+static void bug2issue_export_issues(void)
 {
     int ret;
+    const char *bug_id;
+    int nr_bugs, idx;
 
-    if (bug2issue.bug_id)
-        return bug2issue_export_issue(bug2issue.bug_id);
-    else {
-        const char *bug_id;
-        int nr_bugs, idx;
-
-        assert(bug2issue.bugs);
-
-        nr_bugs = json_object_array_length(bug2issue.bugs);
-        for (idx = 0; idx < nr_bugs; idx++) {
-            bug_id = json_object_get_string(json_object_array_get_idx(bug2issue.bugs, idx));
-
-            ret = bug2issue_export_issue(bug_id);
-            if (ret)
-                return ret;
-        }
+    if (bug2issue.bug_id) {
+        bug2issue_export_issue(bug2issue.bug_id);
+        return;
+    } else {
+        do {
+            ret = bug2issue_list_issues();
+        } while (ret);
     }
 
-    return 0;
+    assert(bug2issue.bugs);
+
+    nr_bugs = json_object_array_length(bug2issue.bugs);
+    for (idx = 0; idx < nr_bugs; idx++) {
+        bug_id = json_object_get_string(json_object_array_get_idx(bug2issue.bugs, idx));
+        bug2issue_export_issue(bug_id);
+    }
 }
 
 static int bug2issue_list_labels(void)
@@ -999,7 +1150,7 @@ static int bug2issue_export_field(const char *field, const char *color)
         row = bug2issue.row;
         if (!row) break;
 
-        if (!row[0] || bug2issue_is_exist_label(row[0]))
+        if (!row[0] || !strlen(row[0]) || bug2issue_is_exist_label(row[0]))
             goto next;
 
         object = json_object_new_object();
@@ -1122,55 +1273,6 @@ static int bug2issue_export_labels(void)
     }
 
     return 0;
-}
-
-static int bug2issue_list_issues(void)
-{
-    int ret = 0;
-    int rows;
-    int index;
-    sql_row_t row;
-    json_object *object = NULL;
-    const char *sql_string;
-    int count;
-
-    assert(!bug2issue.bugs);
-
-    sql_string = bugzilla_list_query;
-    count = 1;
-
-    object = json_object_new_array();
-    if (!object) {
-        ret = -ENOMEM;
-        fprintf(stderr, "json: json_object_new_object failure.\n");
-        goto end;
-    }
-
-    ret = bug2issue_mysql_select(sql_string);
-    if (ret) goto end;
-
-    while (bug2issue_mysql_fetch() == 0) {
-        row = bug2issue.row;
-        if (!row) break;
-
-        for (index = 0; index < count; index++) {
-            if (row[0]) {
-                json_object_array_add(object, json_object_new_string(row[0]));
-                if (bug2issue.mode & BUG2ISSUE_LIST_BUGID)
-                    fprintf(stdout, "%s\n", row[0]);
-            }
-        }
-        rows++;
-	}
-
-    bug2issue.bugs = object;
-    object = NULL;
-
-end:
-	bug2issue_mysql_free_result();
-    if (object)
-        json_object_put(object);
-    return ret;
 }
 
 #ifndef HAVE_LOCALTIME_R
@@ -1468,9 +1570,6 @@ int main(int argc, char **argv)
         bug2issue.mode = BUG2ISSUE_LIST_BUGID;
         bug2issue.bug_id = NULL;
     }
-
-    if (!bug2issue.bug_id)
-        bug2issue_list_issues();
 
     bug2issue_export_labels();
     bug2issue_export_issues();
