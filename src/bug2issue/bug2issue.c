@@ -20,7 +20,13 @@
 #define CURL_USERAGENT      CURL_NAME "/" LIBCURL_VERSION
 #define ALLOC_MINIMUM       512
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+#define foreach_array(idx, array, string)            \
+    for ((idx) = 0, (string) = (array)[0]; (idx) < ARRAY_SIZE((array)); (idx)++, (string) = (array)[idx]) \
+
 typedef char **sql_row_t;
+typedef const char *github_color_t;
 
 struct mysql_conn {
     MYSQL conn;
@@ -34,6 +40,8 @@ struct bug2issue_cfg {
 #define BUG2ISSUE_EXPORT_ISSUE      0x01
 #define BUG2ISSUE_EXPORT_COMMENT    0x02
 #define BUG2ISSUE_UPLOAD_GITHUB     0x10
+#define BUG2ISSUE_LABEL_FIELD       0x20
+#define BUG2ISSUE_LABEL_COMPONENT   0x40
 #define BUG2ISSUE_LIST_BUGID        0x80
 
     char *sql_server;
@@ -44,10 +52,13 @@ struct bug2issue_cfg {
     struct mysql_conn *conn;
     sql_row_t row;
 
+    const char *bugzilla_product;
+
     /* CURL related */
     char *github_repo;
     char *github_user;
     char *github_issue_url;
+    char *github_label_url;
 
     CURL *curl;
     char *curl_output_buf;
@@ -55,6 +66,8 @@ struct bug2issue_cfg {
     size_t curl_store_size;
 
     struct array_list *close_states;
+    struct array_list *field_labels;
+    struct array_list *exist_labels;
 
     char *issues_dir;
     char *bug_id;
@@ -99,19 +112,20 @@ static const char *bugzilla_issue_query = "select "
         "assigned_to.userid=bugs.assigned_to "
     "where bugs.bug_id=%s "
     "order by bugs.bug_id;";
-#define BUG_ID_INDEX        0
-#define BUG_TITLE_INDEX     1
-#define BUG_PRODUCT_INDEX   3
-#define BUG_COMPONENT_INDEX 4
-#define BUG_EMAIL_INDEX     5
-#define BUG_CNAME_INDEX     6
-#define BUG_CREATE_INDEX    9
-#define BUG_PLATFORM_INDEX  13
-#define BUG_OS_INDEX        14
-#define BUG_VERSION_INDEX   15
-#define BUG_PRIORITY_INDEX  16
-#define BUG_SEVERITY_INDEX  17
-#define BUG_STATUS_INDEX    18
+#define BUG_ID_INDEX            0
+#define BUG_TITLE_INDEX         1
+#define BUG_PRODUCT_INDEX       3
+#define BUG_COMPONENT_INDEX     4
+#define BUG_EMAIL_INDEX         5
+#define BUG_CNAME_INDEX         6
+#define BUG_CREATE_INDEX        9
+#define BUG_RESOLUTION_INDEX    12
+#define BUG_PLATFORM_INDEX      13
+#define BUG_OS_INDEX            14
+#define BUG_VERSION_INDEX       15
+#define BUG_PRIORITY_INDEX      16
+#define BUG_SEVERITY_INDEX      17
+#define BUG_STATUS_INDEX        18
 static const char *bugzilla_issue_columns[] = {
     "bug_id",
     "short_desc",
@@ -178,6 +192,52 @@ static const char *bugzilla_comment_columns[] = {
     "attach_description",
     "attach_thedata",
 };
+
+static const char *bugzilla_field_query = "select "
+    "value "
+    "from %s "
+    "where isactive = 1 "
+    "order by sortkey, value;";
+#define FLD_VALUE_INDEX     0
+
+static const char *bugzilla_component_query = "select "
+    "products.name product_name,"
+    "products.id product_id,"
+    "components.name component_name "
+    "from products "
+    "left join components on "
+        "components.product_id=products.id "
+    "where products.name=\"%s\";";
+#define COMP_VALUE_INDEX    2
+static const char *bugzilla_component_columns[] = {
+    "product_name",
+    "product_id",
+    "component_name",
+};
+
+const char *github_label_fields[] = {
+    "rep_platform",
+    "op_sys",
+    "priority",
+    "bug_severity",
+    "bug_status",
+    "resolution",
+};
+
+github_color_t github_label_colors[] = {
+    "FF0000",
+    "FFA500",
+    "FFFF00",
+    "00FF00",
+    "007FFF",
+    "0000FF",
+    "8B00FF",
+};
+
+static void bug2issue_json_free_dummy(void *data)
+{
+    /* nop */
+}
 
 static int bug2issue_mysql_error(int error, const char *errmsg)
 {
@@ -357,11 +417,6 @@ static void bug2issue_add_close_status(const char *status)
     array_list_add(bug2issue.close_states, (void *)status);
 }
 
-static void bug2issue_free_close_status(void *data)
-{
-    /* nop */
-}
-
 static int bug2issue_is_closed_bug(const char *status)
 {
     int nr_status, idx;
@@ -372,6 +427,62 @@ static int bug2issue_is_closed_bug(const char *status)
     for (idx = 0; idx < nr_status; idx++) {
         close_status = (const char *)array_list_get_idx(bug2issue.close_states, idx);
         if (close_status && strcmp(close_status, status) == 0)
+            return 1;
+    }
+
+    return 0;
+}
+
+static int bug2issue_is_exist_label(const char *label)
+{
+    int nr_labels, idx;
+    const char *exist_label;
+    
+    assert(bug2issue.exist_labels);
+    nr_labels = array_list_length(bug2issue.exist_labels);
+    for (idx = 0; idx < nr_labels; idx++) {
+        exist_label = (const char *)array_list_get_idx(bug2issue.exist_labels, idx);
+        if (exist_label && strcmp(exist_label, label) == 0)
+            return 1;
+    }
+
+    return 0;
+}
+
+static int bug2issue_add_field_label(const char *field)
+{
+    int idx;
+    const char *iter;
+    int label_possible = 0;
+
+    assert(bug2issue.field_labels);
+
+    foreach_array(idx, github_label_fields, iter) {
+        if (strcmp(iter, field) == 0) {
+            label_possible = 1;
+            break;
+        }
+    }
+
+    if (!label_possible)
+        return -EINVAL;
+
+    array_list_add(bug2issue.field_labels, (void *)field);
+    bug2issue.mode |= BUG2ISSUE_LABEL_FIELD;
+
+    return 0;
+}
+
+static int bug2issue_is_labeled_field(const char *field)
+{
+    int nr_fields, idx;
+    const char *field_name;
+    
+    assert(bug2issue.field_labels);
+    nr_fields = array_list_length(bug2issue.field_labels);
+    for (idx = 0; idx < nr_fields; idx++) {
+        field_name = (const char *)array_list_get_idx(bug2issue.field_labels, idx);
+        if (field_name && strcmp(field_name, field) == 0)
             return 1;
     }
 
@@ -416,7 +527,10 @@ static int bug2issue_curl_request(const char *url, const char *requestinfo,
                                   const char *postfields)
 {
     int ret;
-    curl_off_t postfieldsize = strlen(postfields);
+    curl_off_t postfieldsize;
+    
+    if (postfields)
+        postfieldsize = strlen(postfields);
 
     curl_easy_setopt(bug2issue.curl, CURLOPT_URL, url);
 
@@ -431,8 +545,11 @@ static int bug2issue_curl_request(const char *url, const char *requestinfo,
     curl_easy_setopt(bug2issue.curl, CURLOPT_USERPWD, bug2issue.github_user);
 
     curl_easy_setopt(bug2issue.curl, CURLOPT_CUSTOMREQUEST, requestinfo);
-    curl_easy_setopt(bug2issue.curl, CURLOPT_POSTFIELDS, postfields);
-    curl_easy_setopt(bug2issue.curl, CURLOPT_POSTFIELDSIZE_LARGE, postfieldsize);
+
+    if (postfields) {
+        curl_easy_setopt(bug2issue.curl, CURLOPT_POSTFIELDS, postfields);
+        curl_easy_setopt(bug2issue.curl, CURLOPT_POSTFIELDSIZE_LARGE, postfieldsize);
+    }
 
     curl_easy_setopt(bug2issue.curl, CURLOPT_HTTPHEADER, NULL);
 
@@ -444,6 +561,11 @@ static int bug2issue_curl_request(const char *url, const char *requestinfo,
 
     (void)fwrite(bug2issue.curl_output_buf, bug2issue.curl_store_size, 1, stdout);
     return 0;
+}
+
+static int bug2issue_curl_get(const char *url)
+{
+    return bug2issue_curl_request(url, "GET", NULL);
 }
 
 static int bug2issue_curl_post(const char *url, const char *postfields)
@@ -470,6 +592,23 @@ static char *bug2issue_get_issue_url(const char *url_template, const char *issue
         sprintf(url, url_template, bug2issue.github_issue_url, issue_id);
 
         return url;
+}
+
+static char *bug2issue_get_repo_url(const char *sub)
+{
+    int len;
+    char *url;
+    char url_template[] = "https://api.github.com/repos/%s/%s";
+
+    len = strlen(url_template) + strlen(bug2issue.github_repo) + (sub?strlen(sub):0);
+    url = malloc(len);
+    if (!url) {
+        fprintf(stderr, "github: malloc(repo_url) failure.\n");
+        return NULL;
+    }
+    sprintf(url, url_template, bug2issue.github_repo, sub);
+
+    return url;
 }
 
 static int bug2issue_export_issue_comments(const char *bug_id, const char *issue_id)
@@ -574,6 +713,7 @@ static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, i
     char filename[MAX_PATH];
     struct printbuf *pbuf;
     json_object *result;
+    json_object *labels;
     json_object *issue_id_obj;
 
     assert(bug_id);
@@ -605,6 +745,16 @@ static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, i
             goto end;
         }
 
+        if (bug2issue.mode & (BUG2ISSUE_LABEL_FIELD | BUG2ISSUE_LABEL_COMPONENT)) {
+            labels = json_object_new_array();
+            if (!labels) {
+                ret = -ENOMEM;
+                fprintf(stderr, "json: json_object_new_array failure.\n");
+                goto end;
+            }
+            json_object_object_add(object, "labels", labels);
+        }
+
         pbuf = printbuf_new();
         if (!pbuf) {
             ret = -ENOMEM;
@@ -624,13 +774,17 @@ static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, i
                   "Product: %s\n"
                   "Component: %s\n"
                   "Platform: %s\n"
-                  "OS: %s\n",
+                  "OS: %s\n"
+                  "Priority: %s\n"
+                  "Severity: %s\n",
                   row[BUG_CNAME_INDEX], row[BUG_EMAIL_INDEX],
                   row[BUG_CREATE_INDEX],
                   row[BUG_PRODUCT_INDEX],
                   row[BUG_COMPONENT_INDEX],
                   row[BUG_PLATFORM_INDEX],
-                  row[BUG_OS_INDEX]);
+                  row[BUG_OS_INDEX],
+                  row[BUG_PRIORITY_INDEX],
+                  row[BUG_SEVERITY_INDEX]);
         json_object_object_add(object, "body", json_object_new_string(pbuf->buf));
 
         printbuf_free(pbuf);
@@ -642,6 +796,23 @@ static int bug2issue_export_issue_content(const char *bug_id, char **issue_id, i
             *closed = 0;
             json_object_object_add(object, "state", json_object_new_string("open"));
         }
+
+        if (bug2issue.mode & BUG2ISSUE_LABEL_FIELD) {
+            if (bug2issue_is_labeled_field("rep_platform"))
+               json_object_array_add(labels, json_object_new_string(row[BUG_PLATFORM_INDEX]));
+            if (bug2issue_is_labeled_field("op_sys"))
+               json_object_array_add(labels, json_object_new_string(row[BUG_OS_INDEX]));
+            if (bug2issue_is_labeled_field("priority"))
+               json_object_array_add(labels, json_object_new_string(row[BUG_PRIORITY_INDEX]));
+            if (bug2issue_is_labeled_field("bug_severity"))
+               json_object_array_add(labels, json_object_new_string(row[BUG_SEVERITY_INDEX]));
+            if (bug2issue_is_labeled_field("bug_status"))
+               json_object_array_add(labels, json_object_new_string(row[BUG_STATUS_INDEX]));
+            if (bug2issue_is_labeled_field("resolution"))
+               json_object_array_add(labels, json_object_new_string(row[BUG_RESOLUTION_INDEX]));
+        }
+        if (bug2issue.mode & BUG2ISSUE_LABEL_COMPONENT)
+               json_object_array_add(labels, json_object_new_string(row[BUG_COMPONENT_INDEX]));
 
         if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
             ret = bug2issue_curl_post(bug2issue.github_issue_url,
@@ -762,10 +933,192 @@ static int bug2issue_export_issues(void)
         for (idx = 0; idx < nr_bugs; idx++) {
             bug_id = json_object_get_string(json_object_array_get_idx(bug2issue.bugs, idx));
 
-            ret = bug2issue_export_issue(bug2issue.bug_id);
+            ret = bug2issue_export_issue(bug_id);
             if (ret)
                 return ret;
         }
+    }
+
+    return 0;
+}
+
+static int bug2issue_list_labels(void)
+{
+    int ret = 0;
+    json_object *result = NULL, *label;
+    int nr_labels, idx;
+
+    ret = bug2issue_curl_get(bug2issue.github_label_url);
+    if (ret) return ret;
+
+    result = json_tokener_parse(bug2issue.curl_output_buf);
+    if (!result) {
+        ret = -EINVAL;
+        fprintf(stderr, "json: json_tokener_parse failure.\n");
+        goto end;
+    }
+    nr_labels = json_object_array_length(result);
+    for (idx = 0; idx < nr_labels; idx++) {
+        label = json_object_object_get(json_object_array_get_idx(result, idx), "name");
+        if (label)
+            array_list_add(bug2issue.exist_labels, strdup(json_object_get_string(label)));
+    }
+
+end:
+    if (result)
+        json_object_put(result);
+    return 0;
+}
+
+static int bug2issue_export_field(const char *field, const char *color)
+{
+    int ret = 0;
+    int rows;
+    sql_row_t row;
+    json_object *object = NULL;
+    const char *sql_string;
+    char *alloc_string = NULL;
+    int alloc_size;
+
+    assert(field);
+
+    alloc_size = strlen(bugzilla_field_query) + strlen(field);
+    alloc_string = malloc(alloc_size);
+    if (!alloc_string) {
+        ret = -ENOMEM;
+        fprintf(stderr, "bugzilla: malloc(field_query) failure.\n");
+        goto end;
+    }
+    sprintf(alloc_string, bugzilla_field_query, field);
+    sql_string = alloc_string;
+
+    ret = bug2issue_mysql_select(sql_string);
+    if (ret) goto end;
+
+    while (bug2issue_mysql_fetch() == 0) {
+        row = bug2issue.row;
+        if (!row) break;
+
+        if (!row[0] || bug2issue_is_exist_label(row[0]))
+            goto next;
+
+        object = json_object_new_object();
+        if (!object) {
+            ret = -ENOMEM;
+            fprintf(stderr, "json: json_object_new_object failure.\n");
+            goto end;
+        }
+
+        json_object_object_add(object, "name", json_object_new_string(row[0]));
+        json_object_object_add(object, "color", json_object_new_string(color));
+
+        ret = bug2issue_curl_post(bug2issue.github_label_url,
+                                  json_object_to_json_string(object));
+        if (ret) goto end;
+
+        json_object_put(object);
+        object = NULL;
+
+next:
+        rows++;
+    }
+
+end:
+	bug2issue_mysql_free_result();
+    if (alloc_string)
+        free(alloc_string);
+    if (object)
+        json_object_put(object);
+    return ret;
+}
+
+static int bug2issue_export_component(const char *product)
+{
+    int ret = 0;
+    int rows;
+    sql_row_t row;
+    json_object *object = NULL;
+    const char *sql_string;
+    char *alloc_string = NULL;
+    int alloc_size;
+
+    assert(product);
+
+    alloc_size = strlen(bugzilla_component_query) + strlen(product);
+    alloc_string = malloc(alloc_size);
+    if (!alloc_string) {
+        ret = -ENOMEM;
+        fprintf(stderr, "bugzilla: malloc(component_query) failure.\n");
+        goto end;
+    }
+    sprintf(alloc_string, bugzilla_component_query, product);
+    sql_string = alloc_string;
+
+    ret = bug2issue_mysql_select(sql_string);
+    if (ret) goto end;
+
+    while (bug2issue_mysql_fetch() == 0) {
+        row = bug2issue.row;
+        if (!row) break;
+
+        if (!row[2] || bug2issue_is_exist_label(row[2]))
+            goto next;
+
+        object = json_object_new_object();
+        if (!object) {
+            ret = -ENOMEM;
+            fprintf(stderr, "json: json_object_new_object failure.\n");
+            goto end;
+        }
+
+        json_object_object_add(object, "name", json_object_new_string(row[2]));
+        json_object_object_add(object, "color", json_object_new_string(github_label_colors[0]));
+
+        ret = bug2issue_curl_post(bug2issue.github_label_url,
+                                  json_object_to_json_string(object));
+        if (ret) goto end;
+
+        json_object_put(object);
+        object = NULL;
+
+next:
+        rows++;
+    }
+
+end:
+	bug2issue_mysql_free_result();
+    if (alloc_string)
+        free(alloc_string);
+    if (object)
+        json_object_put(object);
+    return ret;
+}
+
+static int bug2issue_export_labels(void)
+{
+    int ret;
+    int idx;
+    const char *iter;
+
+    /* only available in migrate mode */
+    if (!(bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB))
+        return 0;
+
+    ret = bug2issue_list_labels();
+    if (ret) return ret;
+
+    if (bug2issue.mode & BUG2ISSUE_LABEL_FIELD) {
+        foreach_array(idx, github_label_fields, iter) {
+            if (bug2issue_is_labeled_field(iter)) {
+                ret = bug2issue_export_field(iter, github_label_colors[idx+1]);
+                if (ret) return ret;
+            }
+        }
+    }
+    
+    if (bug2issue.mode & BUG2ISSUE_LABEL_COMPONENT) {
+        ret = bug2issue_export_component(bug2issue.bugzilla_product);
+        if (ret) return ret;
     }
 
     return 0;
@@ -875,9 +1228,21 @@ static int bug2issue_init(void)
         return -ENOMEM;
     }
 
-    bug2issue.close_states = array_list_new(&bug2issue_free_close_status);
+    bug2issue.close_states = array_list_new(&bug2issue_json_free_dummy);
     if (!bug2issue.close_states) {
-        fprintf(stderr, "curl: array_list_new failure.\n");
+        fprintf(stderr, "curl: array_list_new(close_states) failure.\n");
+        return -ENOMEM;
+    }
+
+    bug2issue.field_labels = array_list_new(&bug2issue_json_free_dummy);
+    if (!bug2issue.field_labels) {
+        fprintf(stderr, "curl: array_list_new(field_labels) failure.\n");
+        return -ENOMEM;
+    }
+
+    bug2issue.exist_labels = array_list_new(&free);
+    if (!bug2issue.exist_labels) {
+        fprintf(stderr, "curl: array_list_new(exist_labels) failure.\n");
         return -ENOMEM;
     }
 
@@ -888,6 +1253,10 @@ static void bug2issue_exit(void)
 {
     if (bug2issue.close_states)
         array_list_free(bug2issue.close_states);
+    if (bug2issue.field_labels)
+        array_list_free(bug2issue.field_labels);
+    if (bug2issue.exist_labels)
+        array_list_free(bug2issue.exist_labels);
     if (bug2issue.curl_output_buf)
         free(bug2issue.curl_output_buf);
 }
@@ -898,9 +1267,6 @@ static int bug2issue_start(void)
     CURLcode code;
 
     if (bug2issue_curl_required()) {
-        int len;
-        char url_template[] = "https://api.github.com/repos/%s/issues";
-
         code = curl_global_init(CURL_GLOBAL_DEFAULT);
         if (code != CURLE_OK) {
             fprintf(stderr, "curl: curl_global_init failure.\n");
@@ -913,13 +1279,13 @@ static int bug2issue_start(void)
             return -ENOMEM;
         }
 
-        len = strlen(url_template) + strlen(bug2issue.github_repo) + 1;
-        bug2issue.github_issue_url = malloc(len);
-        if (!bug2issue.github_issue_url) {
-            fprintf(stderr, "github: malloc(github_issue_url) failure.\n");
+        bug2issue.github_issue_url = bug2issue_get_repo_url("issues");
+        if (!bug2issue.github_issue_url)
             return -ENOMEM;
-        }
-        sprintf(bug2issue.github_issue_url, url_template, bug2issue.github_repo);
+
+        bug2issue.github_label_url = bug2issue_get_repo_url("labels");
+        if (!bug2issue.github_label_url)
+            return -ENOMEM;
 
         curl_easy_setopt(bug2issue.curl, CURLOPT_USERAGENT, CURL_USERAGENT);
     }
@@ -937,18 +1303,24 @@ static void bug2issue_stop(void)
     if (bug2issue_curl_required()) {
         if (bug2issue.curl)
             curl_easy_cleanup(bug2issue.curl);
+
         curl_global_cleanup();
 
         if (bug2issue.github_issue_url) {
             free(bug2issue.github_issue_url);
             bug2issue.github_issue_url = NULL;
         }
+
+        if (bug2issue.github_label_url) {
+            free(bug2issue.github_label_url);
+            bug2issue.github_label_url = NULL;
+        }
     }
 }
 
 static struct option long_options[] = {
     { "bug", 1, 0, 'b' },
-    { "list-bugids", 0, 0, 'l' },
+    { "list-bugids", 0, 0, 'i' },
     { "export-folder", 1, 0, 'f' },
     { "comments", 0, 0, 'c' },
     { "bugzilla-host", 1, 0, 'h' },
@@ -957,13 +1329,15 @@ static struct option long_options[] = {
     { "github-repo", 1, 0, 'r' },
     { "github-user", 1, 0, 'w' },
     { "close-status", 1, 0, 's' },
+    { "field-label", 1, 0, 'l' },
+    { "component-label", 1, 0, 'n' },
     { 0, 0, 0, 0 }
 };
 
 static void usage(void)
 {
     fprintf(stdout, "Usage bug2issue\n");
-    fprintf(stdout, "  [-l|--list-bugids]\n");
+    fprintf(stdout, "  [-i|--list-bugids]\n");
     fprintf(stdout, "  [-f|--export-folder]\n");
     fprintf(stdout, "  [-c|--comments]\n");
     fprintf(stdout, "  [-b|--bug bug_id] dir\n");
@@ -973,12 +1347,14 @@ static void usage(void)
     fprintf(stdout, "  [-r|--github-repo repository]\n");
     fprintf(stdout, "  [-w|--github-user user[:pass]]\n");
     fprintf(stdout, "  [-s|--close-status status\n");
+    fprintf(stdout, "  [-l|--field-label field]\n");
+    fprintf(stdout, "  [-n|--component-label product]\n");
     fprintf(stdout, "This program has following modes:\n");
     fprintf(stdout, " migrate: Migrate bugzilla bugs to github issues (default mode)\n");
     fprintf(stdout, " list   : List bugzilla bug IDs\n");
     fprintf(stdout, " export : Export bugzilla bugs to github IssueAPI compliant json files\n");
     fprintf(stdout, "This program has following options:\n");
-    fprintf(stdout, " -l, --list-bugids\n");
+    fprintf(stdout, " -i, --list-bugids\n");
     fprintf(stdout, "   disable 'export/migrate' modes, enable 'list' mode\n");
     fprintf(stdout, " -f, --export-folder\n");
     fprintf(stdout, "   disable 'migrate' mode, enable 'export' mode if 'list' mode is disabled\n");
@@ -1007,6 +1383,14 @@ static void usage(void)
     fprintf(stdout, " -s, --close-status\n");
     fprintf(stdout, "   used in 'export/migrate' modes\n");
     fprintf(stdout, "   multiple specify bug status (ex. CLOSED) that can be treated as close\n");
+    fprintf(stdout, " -l, --field-label\n");
+    fprintf(stdout, "   used in 'export/migrate' modes\n");
+    fprintf(stdout, "   multiple specify bug fields to be converted into issue label\n");
+    fprintf(stdout, "   Following fields are possible:\n");
+    fprintf(stdout, "    rep_platform op_sys priority bug_severity bug_status resolution\n");
+    fprintf(stdout, " -n, --component-label\n");
+    fprintf(stdout, "   used in 'export/migrate' modes\n");
+    fprintf(stdout, "   specify product to convert its component into issue label\n");
 
     exit(-1);
 }
@@ -1023,12 +1407,12 @@ int main(int argc, char **argv)
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "lf:cb:d:h:u:r:w:s:", long_options, &option_index);
+        c = getopt_long(argc, argv, "if:cb:d:h:u:r:w:s:l:n:", long_options, &option_index);
         if (c == EOF)
             break;
 
         switch (c) {
-        case 'l':
+        case 'i':
             bug2issue.mode |= BUG2ISSUE_LIST_BUGID;
             break;
         case 'f':
@@ -1059,6 +1443,14 @@ int main(int argc, char **argv)
         case 's':
             bug2issue_add_close_status(optarg);
             break;
+        case 'l':
+            if (bug2issue_add_field_label(optarg))
+                usage();
+            break;
+        case 'n':
+            bug2issue.bugzilla_product = optarg;
+            bug2issue.mode |= BUG2ISSUE_LABEL_COMPONENT;
+            break;
         default:
             usage();
             break;
@@ -1080,6 +1472,7 @@ int main(int argc, char **argv)
     if (!bug2issue.bug_id)
         bug2issue_list_issues();
 
+    bug2issue_export_labels();
     bug2issue_export_issues();
 
     bug2issue_stop();
