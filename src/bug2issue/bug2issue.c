@@ -26,6 +26,7 @@
     for ((idx) = 0, (string) = (array)[0]; (idx) < ARRAY_SIZE((array)); (idx)++, (string) = (array)[idx]) \
 
 typedef char **sql_row_t;
+typedef unsigned long *sql_len_t;
 typedef const char *github_color_t;
 
 struct mysql_conn {
@@ -39,6 +40,7 @@ struct bug2issue_cfg {
     unsigned long mode;
 #define BUG2ISSUE_EXPORT_ISSUE      0x0001
 #define BUG2ISSUE_EXPORT_COMMENT    0x0002
+#define BUG2ISSUE_EXPORT_ATTACHMENT 0x0004
 #define BUG2ISSUE_UPLOAD_GITHUB     0x0010
 #define BUG2ISSUE_LABEL_FIELD       0x0020
 #define BUG2ISSUE_LABEL_COMPONENT   0x0040
@@ -52,6 +54,7 @@ struct bug2issue_cfg {
     char *sql_db;
     struct mysql_conn *conn;
     sql_row_t row;
+    sql_len_t lens;
 
     const char *bugzilla_product;
 
@@ -161,6 +164,10 @@ static const char *bugzilla_comments_query = "select "
 #define CMT_CNAME_INDEX     3
 #define CMT_CREATE_INDEX    4
 #define CMT_TEXT_INDEX      5
+#define CMT_ATT_ID_INDEX    6
+#define CMT_ATT_NAME_INDEX  7
+#define CMT_ATT_MIME_INDEX  8
+#define CMT_ATT_DESC_INDEX  9
 static const char *bugzilla_comment_query = "select "
     "longdescs.bug_id,"
     "longdescs.comment_id,"
@@ -194,6 +201,40 @@ static const char *bugzilla_comment_columns[] = {
     "who_name",
     "bug_when",
     "thetext",
+    "attach_id",
+    "attach_filename",
+    "attach_mimetype",
+    "attach_description",
+    "attach_thedata",
+};
+
+static const char *bugzilla_attach_query = "select "
+    "longdescs.bug_id,"
+    "longdescs.comment_id,"
+    "longdescs.bug_when,"
+    "attachments.attach_id,"
+    "attachments.filename attach_filename,"
+    "attachments.mimetype attach_mimetype,"
+    "attachments.description attach_description,"
+    "attach_data.thedata attach_thedata "
+    "from longdescs "
+    "left join attachments on "
+        "attachments.creation_ts=longdescs.bug_when "
+    "and "
+        "attachments.bug_id=longdescs.bug_id "
+    "left join attach_data on "
+        "attach_data.id=attachments.attach_id "
+    "where longdescs.comment_id=%s;";
+#define ATT_BUG_ID_INDEX        0
+#define ATT_CMT_ID_INDEX        1
+#define ATT_ATT_ID_INDEX        3
+#define ATT_FNAME_INDEX         4
+#define ATT_MIME_INDEX          5
+#define ATT_CONTENT_INDEX       7
+static const char *bugzilla_attach_columns[] = {
+    "bug_id",
+    "comment_id",
+    "bug_when",
     "attach_id",
     "attach_filename",
     "attach_mimetype",
@@ -407,6 +448,7 @@ static int bug2issue_mysql_fetch(void)
         return SQL_DOWN;
 
     bug2issue.row = mysql_fetch_row(mysql_sock->result);
+    bug2issue.lens = mysql_fetch_lengths(mysql_sock->result);
     if (bug2issue.row == NULL)
         ret = bug2issue_mysql_error(mysql_errno(mysql_sock->sock),
                                     mysql_error(mysql_sock->sock));
@@ -621,7 +663,95 @@ static char *bug2issue_get_repo_url(const char *sub)
     return url;
 }
 
-static int bug2issue_export_comment(const char *comment_id, const char *issue_id)
+static int bug2issue_write_file(const char *filename, char *buf, unsigned long len)
+{
+    int ret;
+    FILE *fp = NULL;
+
+    fp = fopen(filename, "wb");
+    if (!fp) {
+        fprintf(stderr, "fopen(%s) failure.\n", filename);
+        ret = -EIO;
+        goto end;
+    }
+
+    (void)fwrite(buf, len, 1, fp);
+
+end:
+    if (fp)
+        fclose(fp);
+    return ret;
+}
+
+static int bug2issue_export_attachment(const char *comment_id, char **attach_url)
+{
+    int ret = 0;
+    int rows;
+    sql_row_t row;
+    sql_len_t lens;
+    json_object *object = NULL;
+    const char *sql_string;
+    char *alloc_string = NULL;
+    int alloc_size;
+    const char **column;
+    char filename[MAX_PATH];
+    int count;
+
+    alloc_size = strlen(bugzilla_attach_query) + strlen(comment_id);
+    alloc_string = malloc(alloc_size);
+    if (!alloc_string) {
+        ret = -ENOMEM;
+        fprintf(stderr, "bugzilla: malloc(attach_query) failure.\n");
+        goto end;
+    }
+    sprintf(alloc_string, bugzilla_attach_query, comment_id);
+    sql_string = alloc_string;
+    column = bugzilla_attach_columns;
+    count = sizeof(bugzilla_attach_columns)/sizeof(const char *);
+
+    ret = bug2issue_mysql_select(sql_string);
+    if (ret) goto end;
+
+    while (bug2issue_mysql_fetch() == 0) {
+        row = bug2issue.row;
+        lens = bug2issue.lens;
+        if (!row || !lens) break;
+        if (!row[ATT_ATT_ID_INDEX]) goto next;
+
+        object = json_object_new_object();
+        if (!object) {
+            ret = -ENOMEM;
+            fprintf(stderr, "json: json_object_new_object failure.\n");
+            goto end;
+        }
+
+        if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
+            /* TODO: Upload to GitHub */
+        } else {
+            sprintf(filename, "%s\\attachment-%s-%s-%s-%s", bug2issue.issues_dir,
+                    row[ATT_BUG_ID_INDEX], row[ATT_CMT_ID_INDEX],
+                    row[ATT_ATT_ID_INDEX], row[ATT_FNAME_INDEX]);
+            bug2issue_write_file(filename, row[ATT_CONTENT_INDEX], lens[ATT_CONTENT_INDEX]);
+            *attach_url = strdup(filename);
+        }
+
+        json_object_put(object);
+        object = NULL;
+next:
+        rows++;
+    }
+
+end:
+    bug2issue_mysql_free_result();
+    if (alloc_string)
+        free(alloc_string);
+    if (object)
+        json_object_put(object);
+    return ret;
+}
+
+static int bug2issue_export_comment(const char *comment_id, const char *issue_id,
+                                    const char *attach_url)
 {
     int ret = 0;
     int rows;
@@ -668,14 +798,34 @@ static int bug2issue_export_comment(const char *comment_id, const char *issue_id
             goto end;
         }
 
-        sprintbuf(pbuf,
-                  "Commented by: %s <%s>\n"
-                  "Commented at: %s\n"
-                  "\n"
-                  "%s\n",
-                  row[CMT_CNAME_INDEX], row[CMT_EMAIL_INDEX],
-                  row[CMT_CREATE_INDEX],
-                  row[CMT_TEXT_INDEX]);
+        if (bug2issue.mode & BUG2ISSUE_EXPORT_ATTACHMENT && row[CMT_ATT_ID_INDEX]) {
+            sprintbuf(pbuf,
+                      "Commented by: %s <%s>\n"
+                      "Commented at: %s\n"
+                      "\n"
+                      "%s\n"
+                      "\n"
+                      "Attachment Name: %s\n"
+                      "Attachment MIME: %s\n"
+                      "Attachment Description: %s\n"
+                      "Attachment URL: %s\n",
+                      row[CMT_CNAME_INDEX], row[CMT_EMAIL_INDEX],
+                      row[CMT_CREATE_INDEX],
+                      row[CMT_TEXT_INDEX],
+                      row[CMT_ATT_NAME_INDEX],
+                      row[CMT_ATT_MIME_INDEX],
+                      row[CMT_ATT_DESC_INDEX],
+                      attach_url);
+        } else {
+            sprintbuf(pbuf,
+                      "Commented by: %s <%s>\n"
+                      "Commented at: %s\n"
+                      "\n"
+                      "%s\n",
+                      row[CMT_CNAME_INDEX], row[CMT_EMAIL_INDEX],
+                      row[CMT_CREATE_INDEX],
+                      row[CMT_TEXT_INDEX]);
+        }
         json_object_object_add(object, "body", json_object_new_string(pbuf->buf));
 
         printbuf_free(pbuf);
@@ -773,6 +923,7 @@ static void bug2issue_export_comments(const char *bug_id, const char *issue_id)
     int ret;
     const char *comment_id;
     int nr_comments, idx;
+    char *attach_url = NULL;
 
     do {
         ret = bug2issue_list_comments(bug_id);
@@ -783,9 +934,18 @@ static void bug2issue_export_comments(const char *bug_id, const char *issue_id)
     nr_comments = json_object_array_length(bug2issue.comments);
     for (idx = 0; idx < nr_comments; idx++) {
         comment_id = json_object_get_string(json_object_array_get_idx(bug2issue.comments, idx));
+        if (bug2issue.mode & BUG2ISSUE_EXPORT_ATTACHMENT) {
+            do {
+                ret = bug2issue_export_attachment(comment_id, &attach_url);
+            } while (ret);
+        }
         do {
-            ret = bug2issue_export_comment(comment_id, issue_id);
+            ret = bug2issue_export_comment(comment_id, issue_id, attach_url);
         } while (ret);
+        if (attach_url) {
+            free(attach_url);
+            attach_url = NULL;
+        }
     }
 
     json_object_put(bug2issue.comments);
@@ -1013,7 +1173,7 @@ static void bug2issue_export_issue(const char *bug_id)
         if (bug2issue.mode & BUG2ISSUE_EXPORT_COMMENT)
             bug2issue_export_comments(bug_id, issue_id);
 
-        if (closed) {
+        if (closed && bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
             do {
                 ret = bug2issue_close_issue(issue_id);
             } while (0);
@@ -1429,6 +1589,7 @@ static struct option long_options[] = {
     { "list-bugids", 0, 0, 'i' },
     { "export-folder", 1, 0, 'f' },
     { "comments", 0, 0, 'c' },
+    { "attachments", 0, 0, 'a' },
     { "bugzilla-host", 1, 0, 'h' },
     { "bugzilla-user", 1, 0, 'u' },
     { "bugzilla-db", 1, 0, 'd' },
@@ -1447,6 +1608,7 @@ static void usage(void)
     fprintf(stdout, "  [-i|--list-bugids]\n");
     fprintf(stdout, "  [-f|--export-folder]\n");
     fprintf(stdout, "  [-c|--comments]\n");
+    fprintf(stdout, "  [-a|--attachments]\n");
     fprintf(stdout, "  [-b|--bug bug_id] dir\n");
     fprintf(stdout, "  [-d|--bugzilla-db database]\n");
     fprintf(stdout, "  [-h|--bugzilla-host host[:port]]\n");
@@ -1470,6 +1632,9 @@ static void usage(void)
     fprintf(stdout, " -c, --comments\n");
     fprintf(stdout, "   used in 'export/migrate' modes\n");
     fprintf(stdout, "   export/migrate comments along with the issues\n");
+    fprintf(stdout, " -a, --attachments\n");
+    fprintf(stdout, "   used in 'export/migrate' modes\n");
+    fprintf(stdout, "   export/migrate attachments along with the issues/comments\n");
     fprintf(stdout, " -b, --bug\n");
     fprintf(stdout, "   used in 'export/migrate' mode\n");
     fprintf(stdout, "   export specified bug in 'export/migrate' modes\n");
@@ -1518,7 +1683,7 @@ int main(int argc, char **argv)
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "if:cb:d:h:u:r:w:s:l:n:t", long_options, &option_index);
+        c = getopt_long(argc, argv, "if:cab:d:h:u:r:w:s:l:n:t", long_options, &option_index);
         if (c == EOF)
             break;
 
@@ -1532,6 +1697,11 @@ int main(int argc, char **argv)
             break;
         case 'c':
             bug2issue.mode |= (BUG2ISSUE_EXPORT_ISSUE | BUG2ISSUE_EXPORT_COMMENT);
+            break;
+        case 'a':
+            bug2issue.mode |= (BUG2ISSUE_EXPORT_ISSUE | \
+                               BUG2ISSUE_EXPORT_COMMENT | \
+                               BUG2ISSUE_EXPORT_ATTACHMENT);
             break;
         case 'b':
             bug2issue.bug_id = optarg;
