@@ -37,7 +37,7 @@ getdir()
 
 MINOPTS=5
 UPLDFLAGS=-ac
-ENUMFLAGS=-l
+ENUMFLAGS=-i
 SCRIPT=`getdir $0`
 BUG2ISSUE=$SCRIPT/bug2issue
 
