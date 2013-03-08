@@ -37,12 +37,13 @@ struct mysql_conn {
 
 struct bug2issue_cfg {
     unsigned long mode;
-#define BUG2ISSUE_EXPORT_ISSUE      0x01
-#define BUG2ISSUE_EXPORT_COMMENT    0x02
-#define BUG2ISSUE_UPLOAD_GITHUB     0x10
-#define BUG2ISSUE_LABEL_FIELD       0x20
-#define BUG2ISSUE_LABEL_COMPONENT   0x40
-#define BUG2ISSUE_LIST_BUGID        0x80
+#define BUG2ISSUE_EXPORT_ISSUE      0x0001
+#define BUG2ISSUE_EXPORT_COMMENT    0x0002
+#define BUG2ISSUE_UPLOAD_GITHUB     0x0010
+#define BUG2ISSUE_LABEL_FIELD       0x0020
+#define BUG2ISSUE_LABEL_COMPONENT   0x0040
+#define BUG2ISSUE_TITLE_BUGIDS      0x0080
+#define BUG2ISSUE_LIST_BUGID        0x8000
 
     char *sql_server;
     char *sql_port;
@@ -859,7 +860,10 @@ static int bug2issue_create_issue(const char *bug_id, char **issue_id, int *clos
             goto end;
         }
 
-        sprintbuf(pbuf, "Bug %s - %s", row[BUG_ID_INDEX], row[BUG_TITLE_INDEX]);
+        if (bug2issue.mode & BUG2ISSUE_TITLE_BUGIDS)
+            sprintbuf(pbuf, "Bug %s - %s", row[BUG_ID_INDEX], row[BUG_TITLE_INDEX]);
+        else
+            sprintbuf(pbuf, "%s", row[BUG_TITLE_INDEX]);
         json_object_object_add(object, "title", json_object_new_string(pbuf->buf));
 
         printbuf_reset(pbuf);
@@ -1433,6 +1437,7 @@ static struct option long_options[] = {
     { "close-status", 1, 0, 's' },
     { "field-label", 1, 0, 'l' },
     { "component-label", 1, 0, 'n' },
+    { "bugids-title", 0, 0, 't' },
     { 0, 0, 0, 0 }
 };
 
@@ -1451,6 +1456,7 @@ static void usage(void)
     fprintf(stdout, "  [-s|--close-status status\n");
     fprintf(stdout, "  [-l|--field-label field]\n");
     fprintf(stdout, "  [-n|--component-label product]\n");
+    fprintf(stdout, "  [-t|--bugids-title]\n");
     fprintf(stdout, "This program has following modes:\n");
     fprintf(stdout, " migrate: Migrate bugzilla bugs to github issues (default mode)\n");
     fprintf(stdout, " list   : List bugzilla bug IDs\n");
@@ -1493,6 +1499,9 @@ static void usage(void)
     fprintf(stdout, " -n, --component-label\n");
     fprintf(stdout, "   used in 'export/migrate' modes\n");
     fprintf(stdout, "   specify product to convert its component into issue label\n");
+    fprintf(stdout, " -t, --bugids-title\n");
+    fprintf(stdout, "   used in 'export/migrate' modes\n");
+    fprintf(stdout, "   add bugid into issue's title\n");
 
     exit(-1);
 }
@@ -1509,7 +1518,7 @@ int main(int argc, char **argv)
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "if:cb:d:h:u:r:w:s:l:n:", long_options, &option_index);
+        c = getopt_long(argc, argv, "if:cb:d:h:u:r:w:s:l:n:t", long_options, &option_index);
         if (c == EOF)
             break;
 
@@ -1552,6 +1561,9 @@ int main(int argc, char **argv)
         case 'n':
             bug2issue.bugzilla_product = optarg;
             bug2issue.mode |= BUG2ISSUE_LABEL_COMPONENT;
+            break;
+        case 't':
+            bug2issue.mode |= BUG2ISSUE_TITLE_BUGIDS;
             break;
         default:
             usage();
