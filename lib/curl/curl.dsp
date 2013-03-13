@@ -41,15 +41,15 @@ RSC=rc.exe
 # PROP Intermediate_Dir "..\..\obj\release\curl"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MD /W3 /GX /O2 /I "." /I "..\include" /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "BUILDING_LIBCURL" /D "CURL_STATICLIB" /FD /c
-# ADD CPP /nologo /MD /W3 /GX /O2 /I "..\..\include" /I "..\..\lib\portable" /D "NDEBUG" /D "BUILDING_LIBCURL" /D "USE_SSLEAY" /D "USE_OPENSSL" /D "CURL_STATICLIB" /D "WIN32" /D "_MBCS" /D "CURL_DISABLE_PROXY" /D "CURL_DISABLE_LIBCURL_OPTION" /FD /c
+# ADD CPP /nologo /MT /W3 /GX /O2 /I "..\..\include" /I "..\..\lib\portable" /D "NDEBUG" /D "BUILDING_LIBCURL" /D "USE_SSLEAY" /D "USE_OPENSSL" /D "CURL_STATICLIB" /D "WIN32" /D "_MBCS" /D "CURL_DISABLE_PROXY" /FD /D "CURL_DISABLE_LIBCURL_OPTION" /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /i "..\..\include" /d "NDEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LIB32=link.exe -lib
-# ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo
+# ADD BASE LIB32 kernel32.lib user32.lib advapi32.lib gdi32.lib /nologo
+# ADD LIB32 kernel32.lib user32.lib advapi32.lib gdi32.lib /nologo
 
 !ELSEIF  "$(CFG)" == "curl - Win32 Debug"
 
@@ -64,15 +64,15 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\..\obj\debug\curl"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MDd /W3 /Gm /GX /ZI /Od /I "." /I "..\include" /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "BUILDING_LIBCURL" /D "CURL_STATICLIB" /FD /GZ /c
-# ADD CPP /nologo /MDd /W3 /Gm /GX /Zi /Od /I "..\..\include" /I "..\..\lib\portable" /D "BUILDING_LIBCURL" /D "USE_SSLEAY" /D "USE_OPENSSL" /D "_DEBUG" /D "CURL_DISABLE_PROXY" /D "CURL_STATICLIB" /D "WIN32" /D "_MBCS" /D "CURL_DISABLE_LIBCURL_OPTION" /FD /GZ /c
+# ADD CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /I "..\..\include" /I "..\..\lib\portable" /D "BUILDING_LIBCURL" /D "USE_SSLEAY" /D "USE_OPENSSL" /D "_DEBUG" /D "CURL_DISABLE_PROXY" /D "CURL_STATICLIB" /D "WIN32" /D "_MBCS" /D "CURL_DISABLE_LIBCURL_OPTION" /FD /GZ /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /i "..\..\include" /d "_DEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LIB32=link.exe -lib
-# ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo
+# ADD BASE LIB32 kernel32.lib user32.lib advapi32.lib gdi32.lib /nologo
+# ADD LIB32 kernel32.lib user32.lib advapi32.lib gdi32.lib /nologo
 
 !ENDIF 
 

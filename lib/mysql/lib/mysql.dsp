@@ -41,7 +41,7 @@ RSC=rc.exe
 # PROP Intermediate_Dir "..\..\..\obj\release\mysql"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MD /W3 /O2 /I "..\..\..\include" /I "..\include" /D "DBUG_OFF" /D "NDEBUG" /D "MYSQL_CLIENT" /D "_WINDOWS" /D "WIN32" /FD /c
+# ADD CPP /nologo /MT /W3 /GX /O2 /I "..\..\..\include" /I "..\include" /D "DBUG_OFF" /D "NDEBUG" /D "MYSQL_CLIENT" /D "_WINDOWS" /D "WIN32" /FD /c
 # SUBTRACT CPP /YX
 # ADD BASE RSC /l 0x409
 # ADD RSC /l 0x409
@@ -49,8 +49,8 @@ BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LIB32=link.exe -lib
-# ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo
+# ADD BASE LIB32 kernel32.lib user32.lib advapi32.lib shell32.lib /nologo
+# ADD LIB32 kernel32.lib user32.lib advapi32.lib shell32.lib /nologo
 
 !ELSEIF  "$(CFG)" == "mysql - Win32 Debug"
 
@@ -65,7 +65,7 @@ LIB32=link.exe -lib
 # PROP Intermediate_Dir "..\..\..\obj\debug\mysql"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /Z7 /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MDd /W3 /Z7 /Od /I "..\..\..\include" /I "..\include" /D "_DEBUG" /D "SAFEMALLOC" /D "SAFE_MUTEX" /D "MYSQL_CLIENT" /D "_WINDOWS" /D "WIN32" /FD /c
+# ADD CPP /nologo /MTd /W3 /GX /Z7 /Od /I "..\..\..\include" /I "..\include" /D "_DEBUG" /D "SAFEMALLOC" /D "SAFE_MUTEX" /D "MYSQL_CLIENT" /D "_WINDOWS" /D "WIN32" /FD /c
 # SUBTRACT CPP /YX
 # ADD BASE RSC /l 0x409
 # ADD RSC /l 0x409
@@ -73,8 +73,8 @@ BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LIB32=link.exe -lib
-# ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo
+# ADD BASE LIB32 kernel32.lib user32.lib advapi32.lib shell32.lib /nologo
+# ADD LIB32 kernel32.lib user32.lib advapi32.lib shell32.lib /nologo
 
 !ENDIF 
 
