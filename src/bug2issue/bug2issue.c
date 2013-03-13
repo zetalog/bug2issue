@@ -1090,7 +1090,7 @@ static int bug2issue_create_issue(const char *bug_id, char **issue_id, int *clos
                 goto end;
 
             result = json_tokener_parse(bug2issue.curl_output_buf);
-            if (!result) {
+            if (is_error(result)) {
                 ret = -EINVAL;
                 fprintf(stderr, "json: json_tokener_parse failure.\n");
                 goto end;
@@ -1267,7 +1267,7 @@ static int bug2issue_list_labels(void)
     if (ret) return ret;
 
     result = json_tokener_parse(bug2issue.curl_output_buf);
-    if (!result) {
+    if (is_error(result)) {
         ret = -EINVAL;
         fprintf(stderr, "json: json_tokener_parse failure.\n");
         goto end;
