@@ -551,7 +551,7 @@ static size_t bug2issue_curl_write_cb(void *buffer,
     assert(bug2issue.curl_output_buf);
 
     rc = sz * nmemb;
-    required_size = bug2issue.curl_store_size + rc;
+    required_size = bug2issue.curl_store_size + rc + 1;
 
     if (required_size > bug2issue.curl_alloc_size) {
         char *newbuf;
@@ -570,6 +570,7 @@ static size_t bug2issue_curl_write_cb(void *buffer,
     }
     memcpy(bug2issue.curl_output_buf+bug2issue.curl_store_size, buffer, rc);
     bug2issue.curl_store_size += rc;
+    bug2issue.curl_output_buf[bug2issue.curl_store_size] = '\0';
     
     return rc;
 }
