@@ -15,7 +15,7 @@
 #include <errmsg.h>
 #include <curl/curl.h>
 
-#define SQL_DOWN			1 /* for re-connect */
+#define SQL_DOWN            1 /* for re-connect */
 #define CURL_NAME           "curl"
 #define CURL_USERAGENT      CURL_NAME "/" LIBCURL_VERSION
 #define ALLOC_MINIMUM       512
@@ -293,20 +293,21 @@ static int bug2issue_mysql_error(int error, const char *errmsg)
     if (!error)
         return 0;
 
+    fprintf(stderr,
+            "mysql: error: %d\n%s\n", error, errmsg);
     switch (error) {
     case CR_SERVER_GONE_ERROR:
     case CR_SERVER_LOST:
     case -1:
         fprintf(stderr,
-                "mysql: error: %d, returning SQL_DOWN\n", error);
+                "mysql: returning recoverable SQL_DOWN\n");
         return SQL_DOWN;
     case CR_OUT_OF_MEMORY:
+        return -ENOMEM;
     case CR_COMMANDS_OUT_OF_SYNC:
     case CR_UNKNOWN_ERROR:
     default:
-        fprintf(stderr,
-                "mysql: error: %d\n%s\n", error, errmsg);
-        return -1;
+        return -EINVAL;
     }
 }
 
@@ -319,7 +320,7 @@ static int bug2issue_mysql_init(void)
         mysql_sock = (struct mysql_conn *)malloc(sizeof(struct mysql_conn));
         if (!mysql_sock) {
             fprintf(stderr, "mysql: malloc(mysql_conn) failure.\n");
-            return -1;
+            return -ENOMEM;
         }
         memset(mysql_sock, 0, sizeof(*mysql_sock));
 
