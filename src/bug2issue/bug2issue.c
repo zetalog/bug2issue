@@ -729,6 +729,11 @@ static int bug2issue_export_attachment(const char *comment_id, char **attach_url
 
         if (bug2issue.mode & BUG2ISSUE_UPLOAD_GITHUB) {
             /* TODO: Upload to GitHub */
+            sprintf(filename, "https://github.com/%s/somewhere/attachment-%s-%s-%s-%s",
+		    bug2issue.github_repo,
+                    row[ATT_BUG_ID_INDEX], row[ATT_CMT_ID_INDEX],
+                    row[ATT_ATT_ID_INDEX], row[ATT_FNAME_INDEX]);
+            *attach_url = strdup(filename);
         } else {
             sprintf(filename, "%s\\attachment-%s-%s-%s-%s", bug2issue.issues_dir,
                     row[ATT_BUG_ID_INDEX], row[ATT_CMT_ID_INDEX],
@@ -804,20 +809,13 @@ static int bug2issue_export_comment(const char *comment_id, const char *issue_id
             sprintbuf(pbuf,
                       "Commented by: %s <%s>\n"
                       "Commented at: %s\n"
+                      "Attachment: [%s] (%s)\n"
                       "\n"
-                      "%s\n"
-                      "\n"
-                      "Attachment Name: %s\n"
-                      "Attachment MIME: %s\n"
-                      "Attachment Description: %s\n"
-                      "Attachment URL: %s\n",
+		      "%s\n",
                       row[CMT_CNAME_INDEX], row[CMT_EMAIL_INDEX],
                       row[CMT_CREATE_INDEX],
-                      row[CMT_TEXT_INDEX],
-                      row[CMT_ATT_NAME_INDEX],
-                      row[CMT_ATT_MIME_INDEX],
-                      row[CMT_ATT_DESC_INDEX],
-                      attach_url);
+                      row[CMT_ATT_NAME_INDEX], attach_url,
+                      row[CMT_ATT_DESC_INDEX]);
         } else {
             sprintbuf(pbuf,
                       "Commented by: %s <%s>\n"
@@ -1023,7 +1021,7 @@ static int bug2issue_create_issue(const char *bug_id, char **issue_id, int *clos
         }
 
         if (bug2issue.mode & BUG2ISSUE_TITLE_BUGIDS)
-            sprintbuf(pbuf, "Bug %s - %s", row[BUG_ID_INDEX], row[BUG_TITLE_INDEX]);
+            sprintbuf(pbuf, "BZ%s - %s", row[BUG_ID_INDEX], row[BUG_TITLE_INDEX]);
         else
             sprintbuf(pbuf, "%s", row[BUG_TITLE_INDEX]);
         json_object_object_add(object, "title", json_object_new_string(pbuf->buf));
